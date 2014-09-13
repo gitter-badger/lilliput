@@ -1,4 +1,4 @@
-package register
+package liliput
 
 import (
 	"fmt"

@@ -20,8 +20,9 @@ type WebServiceResponse struct {
 }
 
 func init() {
-	url := Get("lilliput.webservice", "").(string) + "testing"
-	fmt.Println(url)
+	interfaces, _ := net.InterfaceByName("eth0")
+	url := Get("lilliput.webservice", "").(string) + interfaces.HardwareAddr.String()
+	fmt.Println("Registring to webservice..")
 	resp, err := http.Get(url)
 	if err != nil {
 		panic(err)
@@ -34,6 +35,7 @@ func init() {
 	}
 	fmt.Printf("%s\n", string(contents))
 	json.Unmarshal([]byte(contents), &Id)
+	fmt.Println("Registration complete.")
 }
 
 func TinyUrl(resp http.ResponseWriter, req *http.Request) {

@@ -12,6 +12,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 )
 
 var Id WebServiceResponse
@@ -36,10 +37,10 @@ type Response struct {
 
 var response Response
 
-var resource redis.Conn
+var pool *redis.Pool
 
 func init() {
-	interfaces, _ := net.InterfaceByName("eth0")
+	interfaces, _ := net.InterfaceByName(Get("lilliput.interface", "").(string))
 	url := Get("lilliput.webservice", "").(string) + interfaces.HardwareAddr.String()
 	fmt.Println("Registring to webservice..")
 	resp, err := http.Get(url)
@@ -55,22 +56,34 @@ func init() {
 	fmt.Printf("%s\n", string(contents))
 	json.Unmarshal([]byte(contents), &Id)
 	fmt.Println("Registration complete.")
+	// initialize pool
+	InitPool()
 }
 
-func Db() redis.Conn {
-	if resource == nil {
-		val := fmt.Sprintf("%s:%s",
-			Get("redis.server", ""),
-			Get("redis.port", ""))
-		fmt.Println(val)
-		var err error
-		resource, err = redis.Dial("tcp", val)
-		resource.Do("SELECT", 0)
-		if err != nil {
-			panic(err)
-		}
+func newPool(server string) *redis.Pool {
+	return &redis.Pool{
+		MaxIdle:     3,
+		IdleTimeout: 240 * time.Second,
+		Dial: func() (redis.Conn, error) {
+			c, err := redis.Dial("tcp", server)
+			if err != nil {
+				return nil, err
+			}
+			c.Do("SELECT", 1)
+			return c, err
+		},
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
+		},
 	}
-	return resource
+}
+
+func InitPool() {
+	val := fmt.Sprintf("%s:%s",
+		Get("redis.server", ""),
+		Get("redis.port", ""))
+	pool = newPool(val)
 }
 
 func TinyUrl(resp http.ResponseWriter, req *http.Request) {
@@ -94,7 +107,8 @@ func TinyUrl(resp http.ResponseWriter, req *http.Request) {
 }
 
 func StoreData() {
-	db := Db()
+	db := pool.Get()
+	defer db.Close()
 	n, err := redis.Int(db.Do("INCR", "id"))
 	db.Do("SET", n, data.Url)
 	if err != nil {
@@ -116,7 +130,8 @@ func Redirect(resp http.ResponseWriter, req *http.Request) {
 	fmt.Println(encoded)
 	decoded := base62.Decode(encoded)
 	fmt.Println(decoded)
-	db := Db()
+	db := pool.Get()
+	defer db.Close()
 	val, err := redis.String(db.Do("GET", decoded))
 	if err != nil {
 		fmt.Println(err)

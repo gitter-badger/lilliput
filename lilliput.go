@@ -50,12 +50,21 @@ func TinyUrl(resp http.ResponseWriter, req *http.Request) {
 	return
 }
 
+func Redirect(resp http.ResponseWriter, req *http.Request) {
+	fmt.Println("Redirecting from " + Id.RegiserId)
+	params := mux.Vars(req)
+	fmt.Println(params["liliput"])
+	//remove last character from params & decode, fectch url from db
+	http.Redirect(resp, req, "http://google.com", 301)
+}
+
 func Start() {
 	fmt.Println("Starting Liliput..")
 	r := mux.NewRouter()
-	r.HandleFunc("/liliput", TinyUrl).Methods("POST")
+	r.HandleFunc("/", TinyUrl).Methods("POST")
+	r.HandleFunc("/{liliput}", Redirect).Methods("GET")
 	http.Handle("/", r)
-	fmt.Println("Started...")
 	port := fmt.Sprintf(":%v", Get("lilliput.port", ""))
+	fmt.Println("Started on " + port + "...")
 	http.ListenAndServe(port, nil)
 }

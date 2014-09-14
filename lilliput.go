@@ -95,8 +95,10 @@ func TinyUrl(resp http.ResponseWriter, req *http.Request) {
 
 func StoreData() {
 	db := Db()
+	db.Do("SET", "INCR", data.Url)
 	n, err := redis.Int(db.Do("INCR", data.Url))
 	if err != nil {
+		fmt.Println(err)
 		response.Err = true
 		response.Message = "Faild to generate please try again."
 	} else {
@@ -115,12 +117,11 @@ func Redirect(resp http.ResponseWriter, req *http.Request) {
 	decoded := base62.Decode(encoded)
 	fmt.Println(decoded)
 	db := Db()
-	// val, err := redis.String(db.Do("GET", string(decoded)))
-	val, err := db.Do("GET", decoded)
-	fmt.Println(err)
-	fmt.Println(val)
-	//remove last character from params & decode, fetch url from db
-	// http.Redirect(resp, req, "http://google.com", 301)
+	val, err := redis.String(db.Do("GET", string(decoded)))
+	if err != nil {
+		http.Redirect(resp, req, Get("lilliput.domain", "").(string), 301)
+	}
+	http.Redirect(resp, req, val, 301)
 }
 
 func Start() {

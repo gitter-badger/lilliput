@@ -1,11 +1,11 @@
 package liliput
 
 import (
+	"base62"
 	"encoding/json"
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"github.com/gorilla/mux"
-	"base62"
 	"io"
 	"io/ioutil"
 	"net"
@@ -71,7 +71,7 @@ func newPool(server string) *redis.Pool {
 			if err != nil {
 				return nil, err
 			}
-			c.Do("SELECT", 1)
+			c.Do("SELECT", Get("redis.dbname", "").(int64))
 			return c, err
 		},
 		TestOnBorrow: func(c redis.Conn, t time.Time) error {

@@ -95,8 +95,8 @@ func TinyUrl(resp http.ResponseWriter, req *http.Request) {
 
 func StoreData() {
 	db := Db()
-	db.Do("SET", "INCR", data.Url)
-	n, err := redis.Int(db.Do("INCR", data.Url))
+	n, err := redis.Int(db.Do("INCR", "id"))
+	db.Do("SET", n, data.Url)
 	if err != nil {
 		fmt.Println(err)
 		response.Err = true
@@ -117,8 +117,9 @@ func Redirect(resp http.ResponseWriter, req *http.Request) {
 	decoded := base62.Decode(encoded)
 	fmt.Println(decoded)
 	db := Db()
-	val, err := redis.String(db.Do("GET", string(decoded)))
+	val, err := redis.String(db.Do("GET", decoded))
 	if err != nil {
+		fmt.Println(err)
 		http.Redirect(resp, req, Get("lilliput.domain", "").(string), 301)
 	}
 	http.Redirect(resp, req, val, 301)

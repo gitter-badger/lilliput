@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/jabong/liliput"
+	"liliput"
 )
 
 func main() {

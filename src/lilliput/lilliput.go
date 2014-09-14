@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"github.com/gorilla/mux"
-	"github.com/pilu/base62"
+	"base62"
 	"io"
 	"io/ioutil"
 	"net"

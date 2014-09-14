@@ -6,10 +6,12 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/gorilla/mux"
 	"github.com/pilu/base62"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
+	_ "path"
 	"regexp"
 	"strings"
 	"time"
@@ -135,7 +137,8 @@ func Redirect(resp http.ResponseWriter, req *http.Request) {
 	val, err := redis.String(db.Do("GET", decoded))
 	if err != nil {
 		fmt.Println(err)
-		http.Redirect(resp, req, Get("lilliput.domain", "").(string), 301)
+		http.Redirect(resp, req, "/notfound/", 301)
+		return
 	}
 	http.Redirect(resp, req, val, 301)
 }
@@ -144,9 +147,67 @@ func Start() {
 	fmt.Println("Starting Liliput..")
 	r := mux.NewRouter()
 	r.HandleFunc("/", TinyUrl).Methods("POST")
+	r.HandleFunc("/", RenderHome).Methods("GET")
 	r.HandleFunc("/{liliput}", Redirect).Methods("GET")
+	r.HandleFunc("/notfound/", RenderNotFound).Methods("GET")
 	http.Handle("/", r)
 	port := fmt.Sprintf(":%v", Get("lilliput.port", ""))
 	fmt.Println("Started on " + port + "...")
 	http.ListenAndServe(port, nil)
+}
+
+func RenderHome(resp http.ResponseWriter, req *http.Request) {
+	var (
+		status int
+		err    error
+	)
+	defer func() {
+		if nil != err {
+			http.Error(resp, err.Error(), status)
+		}
+	}()
+	fpath := "./static/index.html"
+
+	resp.Header().Set("Content-Type", "text/html")
+	if err = servefile(resp, fpath); nil != err {
+		status = http.StatusInternalServerError
+		return
+	}
+}
+
+func servefile(res http.ResponseWriter, fpath string) (err error) {
+	outfile, err := os.OpenFile(fpath, os.O_RDONLY, 0x0444)
+	if nil != err {
+		return
+	}
+
+	// 32k buffer copy
+	written, err := io.Copy(res, outfile)
+	if nil != err {
+		return
+	}
+
+	fmt.Println("served file:", outfile.Name(), ";length:", written)
+	return
+}
+
+func RenderNotFound(resp http.ResponseWriter, req *http.Request) {
+	var (
+		status int
+		err    error
+	)
+	defer func() {
+		if nil != err {
+			http.Error(resp, err.Error(), status)
+		}
+	}()
+	fpath := "./static/404.html"
+
+	// http.Error(resp, err.Error(), 404)
+	// http.Error(resp, "", http.StatusNotFound)
+	resp.Header().Set("Content-Type", "text/html")
+	if err = servefile(resp, fpath); nil != err {
+		status = http.StatusInternalServerError
+		return
+	}
 }

@@ -137,7 +137,7 @@ func Redirect(resp http.ResponseWriter, req *http.Request) {
 	val, err := redis.String(db.Do("GET", decoded))
 	if err != nil {
 		fmt.Println(err)
-		http.Redirect(resp, req, "/notfound/", 301)
+		http.Redirect(resp, req, "/notfound/", 404)
 		return
 	}
 	http.Redirect(resp, req, val, 301)

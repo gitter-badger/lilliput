@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/garyburd/redigo/redis"
-	"github.com/gorilla/mux"
+	"github.com/go-martini/martini"
 	"io"
 	"io/ioutil"
 	"net"
@@ -124,11 +124,9 @@ func StoreData() {
 	}
 }
 
-func Redirect(resp http.ResponseWriter, req *http.Request) {
+func Redirect(resp http.ResponseWriter, req *http.Request, params martini.Params) {
 	fmt.Println("Redirecting from " + Id.RegisterId)
-	params := mux.Vars(req)
-	fmt.Println(params["liliput"])
-	encoded := strings.TrimSuffix(params["liliput"], Id.RegisterId)
+	encoded := strings.TrimSuffix(params["token"], Id.RegisterId)
 	fmt.Println(encoded)
 	decoded := base62.Decode(encoded)
 	fmt.Println(decoded)
@@ -137,7 +135,9 @@ func Redirect(resp http.ResponseWriter, req *http.Request) {
 	val, err := redis.String(db.Do("GET", decoded))
 	if err != nil {
 		fmt.Println(err)
-		http.Redirect(resp, req, "/notfound/", 404)
+		RenderNotFound(resp, req)
+		http.Error(resp, http.StatusText(http.StatusNotFound), 404)
+
 		return
 	}
 	http.Redirect(resp, req, val, 301)
@@ -145,13 +145,15 @@ func Redirect(resp http.ResponseWriter, req *http.Request) {
 
 func Start() {
 	fmt.Println("Starting Liliput..")
-	r := mux.NewRouter()
-	r.HandleFunc("/", TinyUrl).Methods("POST")
-	r.HandleFunc("/", RenderHome).Methods("GET")
-	r.HandleFunc("/{liliput}", Redirect).Methods("GET")
-	r.HandleFunc("/notfound/", RenderNotFound).Methods("GET")
-	http.Handle("/", r)
+
+	m := martini.Classic()
+	m.Get("/:token", Redirect)
+	m.Get("/", RenderHome)
+	m.Post("/", TinyUrl)
+	m.NotFound(RenderNotFound)
+	http.Handle("/", m)
 	port := fmt.Sprintf(":%v", Get("lilliput.port", ""))
+	m.Run()
 	fmt.Println("Started on " + port + "...")
 	http.ListenAndServe(port, nil)
 }

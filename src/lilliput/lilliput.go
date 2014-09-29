@@ -41,7 +41,7 @@ func TinyUrl(req *http.Request, r render.Render, pool *redis.Pool) {
 	data := &Data{OrgUrl: req.FormValue("url")}
 	expression := regexp.MustCompile(`(http|https):\/\/(\w+:{0,1}\w*@)?(\S+)(:[0-9]+)?(\/|\/([\w#!:.?+=&%@!\-\/]))?`)
 	if expression.MatchString(data.OrgUrl) {
-		data.StoreData(pool)
+		data.Save(pool)
 	} else {
 		data.Err = true
 		data.Message = "Provide valid url, url must be with prepend with http:// or https://"
@@ -50,7 +50,7 @@ func TinyUrl(req *http.Request, r render.Render, pool *redis.Pool) {
 	return
 }
 
-func (data *Data) StoreData(pool *redis.Pool) {
+func (data *Data) Save(pool *redis.Pool) {
 	db := pool.Get()
 	defer db.Close()
 	n, err := redis.Int(db.Do("INCR", "id"))
@@ -66,15 +66,24 @@ func (data *Data) StoreData(pool *redis.Pool) {
 	}
 }
 
-func Redirect(params martini.Params, r render.Render, pool *redis.Pool) {
-	decoded := base62.Decode(params["token"])
+func (data *Data) Retrieve(pool *redis.Pool, token string) error {
+	decoded := base62.Decode(token)
 	db := pool.Get()
 	defer db.Close()
-	val, err := redis.String(db.Do("GET", decoded))
+	url, err := redis.String(db.Do("GET", decoded))
+	if err == nil {
+		data.OrgUrl = url
+	}
+	return err
+}
+
+func Redirect(params martini.Params, r render.Render, pool *redis.Pool) {
+	data := &Data{}
+	err := data.Retrieve(pool, params["token"])
 	if err != nil {
 		r.HTML(404, "404", nil)
 	} else {
-		r.Redirect(val, 301)
+		r.Redirect(data.OrgUrl, 301)
 	}
 }
 

@@ -7,23 +7,11 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/go-martini/martini"
 	"io"
-	"io/ioutil"
-	"net"
 	"net/http"
 	"os"
-	_ "path"
 	"regexp"
-	"strings"
 	"time"
 )
-
-var Id WebServiceResponse
-
-type WebServiceResponse struct {
-	Id         int
-	MacId      string
-	RegisterId string
-}
 
 type Data struct {
 	Url string
@@ -42,22 +30,6 @@ var response Response
 var pool *redis.Pool
 
 func init() {
-	interfaces, _ := net.InterfaceByName(Get("lilliput.interface", "").(string))
-	url := Get("lilliput.webservice", "").(string) + interfaces.HardwareAddr.String()
-	fmt.Println("Registring to webservice..")
-	resp, err := http.Get(url)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-	contents, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("%s", err)
-		os.Exit(1)
-	}
-	fmt.Printf("%s\n", string(contents))
-	json.Unmarshal([]byte(contents), &Id)
-	fmt.Println("Registration complete.")
 	// initialize pool
 	InitPool()
 }
@@ -119,17 +91,13 @@ func StoreData() {
 		response.Message = "Faild to generate please try again."
 	} else {
 		encoded := base62.Encode(n)
-		response.Url = Get("lilliput.domain", "").(string) + encoded + Id.RegisterId
+		response.Url = Get("lilliput.domain", "").(string) + encoded
 		fmt.Println(response.Url)
 	}
 }
 
 func Redirect(resp http.ResponseWriter, req *http.Request, params martini.Params) {
-	fmt.Println("Redirecting from " + Id.RegisterId)
-	encoded := strings.TrimSuffix(params["token"], Id.RegisterId)
-	fmt.Println(encoded)
-	decoded := base62.Decode(encoded)
-	fmt.Println(decoded)
+	decoded := base62.Decode(params["token"])
 	db := pool.Get()
 	defer db.Close()
 	val, err := redis.String(db.Do("GET", decoded))
@@ -137,7 +105,6 @@ func Redirect(resp http.ResponseWriter, req *http.Request, params martini.Params
 		fmt.Println(err)
 		RenderNotFound(resp, req)
 		http.Error(resp, http.StatusText(http.StatusNotFound), 404)
-
 		return
 	}
 	http.Redirect(resp, req, val, 301)
@@ -145,17 +112,16 @@ func Redirect(resp http.ResponseWriter, req *http.Request, params martini.Params
 
 func Start() {
 	fmt.Println("Starting Liliput..")
-
 	m := martini.Classic()
 	m.Get("/:token", Redirect)
 	m.Get("/", RenderHome)
 	m.Post("/", TinyUrl)
 	m.NotFound(RenderNotFound)
-	http.Handle("/", m)
 	port := fmt.Sprintf(":%v", Get("lilliput.port", ""))
-	m.Run()
 	fmt.Println("Started on " + port + "...")
+	http.Handle("/", m)
 	http.ListenAndServe(port, nil)
+	m.Run()
 }
 
 func RenderHome(resp http.ResponseWriter, req *http.Request) {
@@ -204,9 +170,6 @@ func RenderNotFound(resp http.ResponseWriter, req *http.Request) {
 		}
 	}()
 	fpath := "./static/404.html"
-
-	// http.Error(resp, err.Error(), 404)
-	// http.Error(resp, "", http.StatusNotFound)
 	resp.Header().Set("Content-Type", "text/html")
 	if err = servefile(resp, fpath); nil != err {
 		status = http.StatusInternalServerError

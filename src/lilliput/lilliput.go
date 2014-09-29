@@ -2,36 +2,20 @@ package liliput
 
 import (
 	"base62"
-	"encoding/json"
 	"fmt"
+	"github.com/codegangsta/martini-contrib/render"
 	"github.com/garyburd/redigo/redis"
 	"github.com/go-martini/martini"
-	"io"
 	"net/http"
-	"os"
 	"regexp"
 	"time"
 )
 
 type Data struct {
-	Url string
-}
-
-var data Data
-
-type Response struct {
 	Url     string `json:"url"`
 	Err     bool   `json:"err"`
 	Message string `json:"message"`
-}
-
-var response Response
-
-var pool *redis.Pool
-
-func init() {
-	// initialize pool
-	InitPool()
+	OrgUrl  string
 }
 
 func newPool(server string) *redis.Pool {
@@ -53,126 +37,69 @@ func newPool(server string) *redis.Pool {
 	}
 }
 
-func InitPool() {
-	val := fmt.Sprintf("%s:%s",
-		Get("redis.server", ""),
-		Get("redis.port", ""))
-	pool = newPool(val)
-}
-
-func TinyUrl(resp http.ResponseWriter, req *http.Request) {
-	resp.Header().Set("Content-Type", "application/json")
-	fmt.Println(req.FormValue("url"))
-	data.Url = req.FormValue("url")
+func TinyUrl(req *http.Request, r render.Render, pool *redis.Pool) {
+	data := &Data{OrgUrl: req.FormValue("url")}
 	expression := regexp.MustCompile(`(http|https):\/\/(\w+:{0,1}\w*@)?(\S+)(:[0-9]+)?(\/|\/([\w#!:.?+=&%@!\-\/]))?`)
-	fmt.Println(expression.MatchString(data.Url))
-
-	if expression.MatchString(data.Url) {
-		StoreData()
-		response.Err = false
+	if expression.MatchString(data.OrgUrl) {
+		data.StoreData(pool)
 	} else {
-		response.Err = true
-		response.Message = "Provide valid url,url must be with prepend with http:// or https://"
+		data.Err = true
+		data.Message = "Provide valid url, url must be with prepend with http:// or https://"
 	}
-
-	r, _ := json.Marshal(response)
-	resp.Write(r)
+	r.JSON(200, data)
 	return
 }
 
-func StoreData() {
+func (data *Data) StoreData(pool *redis.Pool) {
 	db := pool.Get()
 	defer db.Close()
 	n, err := redis.Int(db.Do("INCR", "id"))
-	db.Do("SET", n, data.Url)
+	db.Do("SET", n, data.OrgUrl)
 	if err != nil {
 		fmt.Println(err)
-		response.Err = true
-		response.Message = "Faild to generate please try again."
+		data.Err = true
+		data.Message = "Faild to generate please try again."
 	} else {
+		data.Err = false
 		encoded := base62.Encode(n)
-		response.Url = Get("lilliput.domain", "").(string) + encoded
-		fmt.Println(response.Url)
+		data.Url = Get("lilliput.domain", "").(string) + encoded
 	}
 }
 
-func Redirect(resp http.ResponseWriter, req *http.Request, params martini.Params) {
+func Redirect(params martini.Params, r render.Render, pool *redis.Pool) {
 	decoded := base62.Decode(params["token"])
 	db := pool.Get()
 	defer db.Close()
 	val, err := redis.String(db.Do("GET", decoded))
 	if err != nil {
-		fmt.Println(err)
-		RenderNotFound(resp, req)
-		http.Error(resp, http.StatusText(http.StatusNotFound), 404)
-		return
+		r.HTML(404, "404", nil)
+	} else {
+		r.Redirect(val, 301)
 	}
-	http.Redirect(resp, req, val, 301)
 }
 
 func Start() {
 	fmt.Println("Starting Liliput..")
 	m := martini.Classic()
+	m.Use(render.Renderer(render.Options{
+		Directory:  "static",
+		Extensions: []string{".html"},
+		Charset:    "UTF-8",
+	}))
+
 	m.Get("/:token", Redirect)
-	m.Get("/", RenderHome)
+	m.Get("/", func(r render.Render) {
+		r.HTML(200, "index", nil)
+	})
 	m.Post("/", TinyUrl)
-	m.NotFound(RenderNotFound)
+	server := fmt.Sprintf("%s:%s",
+		Get("redis.server", ""),
+		Get("redis.port", ""))
+	m.Map(newPool(server))
+
 	port := fmt.Sprintf(":%v", Get("lilliput.port", ""))
 	fmt.Println("Started on " + port + "...")
 	http.Handle("/", m)
 	http.ListenAndServe(port, nil)
 	m.Run()
-}
-
-func RenderHome(resp http.ResponseWriter, req *http.Request) {
-	var (
-		status int
-		err    error
-	)
-	defer func() {
-		if nil != err {
-			http.Error(resp, err.Error(), status)
-		}
-	}()
-	fpath := "./static/index.html"
-
-	resp.Header().Set("Content-Type", "text/html")
-	if err = servefile(resp, fpath); nil != err {
-		status = http.StatusInternalServerError
-		return
-	}
-}
-
-func servefile(res http.ResponseWriter, fpath string) (err error) {
-	outfile, err := os.OpenFile(fpath, os.O_RDONLY, 0x0444)
-	if nil != err {
-		return
-	}
-
-	// 32k buffer copy
-	written, err := io.Copy(res, outfile)
-	if nil != err {
-		return
-	}
-
-	fmt.Println("served file:", outfile.Name(), ";length:", written)
-	return
-}
-
-func RenderNotFound(resp http.ResponseWriter, req *http.Request) {
-	var (
-		status int
-		err    error
-	)
-	defer func() {
-		if nil != err {
-			http.Error(resp, err.Error(), status)
-		}
-	}()
-	fpath := "./static/404.html"
-	resp.Header().Set("Content-Type", "text/html")
-	if err = servefile(resp, fpath); nil != err {
-		status = http.StatusInternalServerError
-		return
-	}
 }

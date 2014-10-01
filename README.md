@@ -60,8 +60,8 @@ Alternatvely we can use<br>
 <pre>
 	<code>
 		shell> curl --data "url=http://google.com" http://127.0.0.1:8989
-		```json
-		{"url":"http://127.0.0.1:8989/4P","err":false,"message":"","OrgUrl":"http://google.com"}
-		```
 	</code>
 </pre>
+```json
+	{"url":"http://127.0.0.1:8989/4P","err":false,"message":"","OrgUrl":"http://google.com"}
+```

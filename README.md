@@ -40,3 +40,18 @@ Alternatvely we can use<br>
 <pre><code>make depends</code></pre></li>
 <li>To build apiary executable file type
 <pre><code>make build</code></pre></li></ol>
+<li><b>Configuration:</b></li>
+<li>Copy config.ini to dev.ini and change values as per your environment</li>
+<pre>
+	<code>
+			[lilliput]
+			// port number on which lilliput will be running
+			port = 8989 
+			// domain name which will be prepend in tinyurl
+			domain = "http://127.0.0.1:8989/"
+			[redis]
+			server = "127.0.0.1"
+			port = "6379"
+			dbname = 0
+	</code>
+</pre>

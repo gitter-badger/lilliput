@@ -3,6 +3,7 @@ package liliput
 import (
 	"base62"
 	"fmt"
+	"github.com/blackjack/syslog"
 	"github.com/codegangsta/martini-contrib/render"
 	"github.com/garyburd/redigo/redis"
 	"github.com/go-martini/martini"
@@ -43,9 +44,11 @@ func TinyUrl(req *http.Request, r render.Render, pool *redis.Pool) {
 	if expression.MatchString(data.OrgUrl) {
 		data.Save(pool)
 	} else {
+		syslog.Critf("Invalid url %s", data.OrgUrl)
 		data.Err = true
 		data.Message = "Provide valid url, url must be with prepend with http:// or https://"
 	}
+
 	r.JSON(200, data)
 	return
 }
@@ -56,7 +59,7 @@ func (data *Data) Save(pool *redis.Pool) {
 	n, err := redis.Int(db.Do("INCR", "id"))
 	db.Do("SET", n, data.OrgUrl)
 	if err != nil {
-		fmt.Println(err)
+		syslog.Critf("Error: %s", err)
 		data.Err = true
 		data.Message = "Faild to generate please try again."
 	} else {
@@ -64,6 +67,7 @@ func (data *Data) Save(pool *redis.Pool) {
 		encoded := base62.Encode(n)
 		data.Url = Get("lilliput.domain", "").(string) + encoded
 	}
+	syslog.Critf("Tiny url from %s to %s", data.OrgUrl, data.Url)
 }
 
 func (data *Data) Retrieve(pool *redis.Pool, token string) error {
@@ -81,14 +85,18 @@ func Redirect(params martini.Params, r render.Render, pool *redis.Pool) {
 	data := &Data{}
 	err := data.Retrieve(pool, params["token"])
 	if err != nil {
+		syslog.Critf("Error: Token not found %s", params["token"])
 		r.HTML(404, "404", nil)
 	} else {
+		syslog.Critf("Redirect from %s to %s", Get("lilliput.domain", "").(string)+params["token"], data.OrgUrl)
 		r.Redirect(data.OrgUrl, 301)
 	}
 }
 
 func Start() {
 	fmt.Println("Starting Liliput..")
+	syslog.Openlog("lilliput", syslog.LOG_PID, syslog.LOG_USER)
+
 	m := martini.Classic()
 	m.Use(render.Renderer(render.Options{
 		Directory:  "static",

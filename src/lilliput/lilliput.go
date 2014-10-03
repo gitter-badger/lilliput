@@ -1,7 +1,7 @@
 package liliput
 
 import (
-	"base62"
+	"crypto/rand"
 	"fmt"
 	"github.com/blackjack/syslog"
 	"github.com/codegangsta/martini-contrib/render"
@@ -12,10 +12,15 @@ import (
 	"time"
 )
 
+const (
+	alphanum = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+)
+
 type Data struct {
 	Url     string `json:"url"`
 	Err     bool   `json:"err"`
 	Message string `json:"message"`
+	token   string
 	OrgUrl  string
 }
 
@@ -56,25 +61,34 @@ func TinyUrl(req *http.Request, r render.Render, pool *redis.Pool) {
 func (data *Data) Save(pool *redis.Pool) {
 	db := pool.Get()
 	defer db.Close()
-	n, err := redis.Int(db.Do("INCR", "id"))
-	db.Do("SET", n, data.OrgUrl)
+	bytes := make([]byte, 7)
+	for {
+		rand.Read(bytes)
+		for i, b := range bytes {
+			bytes[i] = alphanum[b%byte(len(alphanum))]
+		}
+		id := string(bytes)
+		if exists, _ := redis.Bool(db.Do("EXISTS", id)); !exists {
+			data.token = id
+			break
+		}
+	}
+	_, err := db.Do("SET", data.token, data.OrgUrl)
 	if err != nil {
 		syslog.Critf("Error: %s", err)
 		data.Err = true
 		data.Message = "Faild to generate please try again."
 	} else {
 		data.Err = false
-		encoded := base62.Encode(n)
-		data.Url = Get("lilliput.domain", "").(string) + encoded
+		data.Url = Get("lilliput.domain", "").(string) + data.token
 	}
 	syslog.Critf("Tiny url from %s to %s", data.OrgUrl, data.Url)
 }
 
-func (data *Data) Retrieve(pool *redis.Pool, token string) error {
-	decoded := base62.Decode(token)
+func (data *Data) Retrieve(pool *redis.Pool) error {
 	db := pool.Get()
 	defer db.Close()
-	url, err := redis.String(db.Do("GET", decoded))
+	url, err := redis.String(db.Do("GET", data.token))
 	if err == nil {
 		data.OrgUrl = url
 	}
@@ -83,7 +97,8 @@ func (data *Data) Retrieve(pool *redis.Pool, token string) error {
 
 func Redirect(params martini.Params, r render.Render, pool *redis.Pool) {
 	data := &Data{}
-	err := data.Retrieve(pool, params["token"])
+	data.token = params["token"]
+	err := data.Retrieve(pool)
 	if err != nil {
 		syslog.Critf("Error: Token not found %s", params["token"])
 		r.HTML(404, "404", nil)

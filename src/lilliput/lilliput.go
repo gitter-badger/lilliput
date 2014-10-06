@@ -9,6 +9,7 @@ import (
 	"github.com/go-martini/martini"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -24,7 +25,7 @@ type Data struct {
 	OrgUrl  string
 }
 
-func newPool(server string) *redis.Pool {
+func NewPool(server string) *redis.Pool {
 	return &redis.Pool{
 		MaxIdle:     3,
 		IdleTimeout: 240 * time.Second,
@@ -44,7 +45,7 @@ func newPool(server string) *redis.Pool {
 }
 
 func TinyUrl(req *http.Request, r render.Render, pool *redis.Pool) {
-	data := &Data{OrgUrl: req.FormValue("url")}
+	data := &Data{OrgUrl: strings.TrimSpace(req.FormValue("url"))}
 	expression := regexp.MustCompile(`(http|https):\/\/(\w+:{0,1}\w*@)?(\S+)(:[0-9]+)?(\/|\/([\w#!:.?+=&%@!\-\/]))?`)
 	if expression.MatchString(data.OrgUrl) {
 		data.Save(pool)
@@ -62,7 +63,8 @@ func (data *Data) Save(pool *redis.Pool) {
 	db := pool.Get()
 	defer db.Close()
 	bytes := make([]byte, 7)
-	for {
+
+	for i := 0; i < 5; i++ {
 		rand.Read(bytes)
 		for i, b := range bytes {
 			bytes[i] = alphanum[b%byte(len(alphanum))]
@@ -73,16 +75,23 @@ func (data *Data) Save(pool *redis.Pool) {
 			break
 		}
 	}
-	_, err := db.Do("SET", data.token, data.OrgUrl)
-	if err != nil {
-		syslog.Critf("Error: %s", err)
+
+	if data.token == "" {
+		syslog.Critf("Error: failed to generate token")
 		data.Err = true
-		data.Message = "Faild to generate please try again."
+		data.Message = "Faild to generate token please try again."
 	} else {
-		data.Err = false
-		data.Url = Get("lilliput.domain", "").(string) + data.token
+		_, err := db.Do("SET", data.token, data.OrgUrl)
+		if err != nil {
+			syslog.Critf("Error: %s", err)
+			data.Err = true
+			data.Message = "Faild to generate please try again."
+		} else {
+			data.Err = false
+			data.Url = Get("lilliput.domain", "").(string) + data.token
+		}
+		syslog.Critf("Tiny url from %s to %s", data.OrgUrl, data.Url)
 	}
-	syslog.Critf("Tiny url from %s to %s", data.OrgUrl, data.Url)
 }
 
 func (data *Data) Retrieve(pool *redis.Pool) error {
@@ -127,7 +136,7 @@ func Start() {
 	server := fmt.Sprintf("%s:%s",
 		Get("redis.server", ""),
 		Get("redis.port", ""))
-	m.Map(newPool(server))
+	m.Map(NewPool(server))
 
 	port := fmt.Sprintf(":%v", Get("lilliput.port", ""))
 	fmt.Println("Started on " + port + "...")

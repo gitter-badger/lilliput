@@ -21,8 +21,8 @@ type Data struct {
 	Url     string `json:"url"`
 	Err     bool   `json:"err"`
 	Message string `json:"message"`
-	token   string
-	OrgUrl  string
+	Token   string `json:"_"`
+	OrgUrl  string `json:"_"`
 }
 
 func NewPool(server string) *redis.Pool {
@@ -71,24 +71,24 @@ func (data *Data) Save(pool *redis.Pool) {
 		}
 		id := string(bytes)
 		if exists, _ := redis.Bool(db.Do("EXISTS", id)); !exists {
-			data.token = id
+			data.Token = id
 			break
 		}
 	}
 
-	if data.token == "" {
-		syslog.Critf("Error: failed to generate token")
+	if data.Token == "" {
+		syslog.Critf("Error: failed to generate Token")
 		data.Err = true
-		data.Message = "Faild to generate token please try again."
+		data.Message = "Faild to generate Token please try again."
 	} else {
-		_, err := db.Do("SET", data.token, data.OrgUrl)
+		_, err := db.Do("SET", data.Token, data.OrgUrl)
 		if err != nil {
 			syslog.Critf("Error: %s", err)
 			data.Err = true
 			data.Message = "Faild to generate please try again."
 		} else {
 			data.Err = false
-			data.Url = Get("lilliput.domain", "").(string) + data.token
+			data.Url = Get("lilliput.domain", "").(string) + data.Token
 		}
 		syslog.Critf("Tiny url from %s to %s", data.OrgUrl, data.Url)
 	}
@@ -97,7 +97,7 @@ func (data *Data) Save(pool *redis.Pool) {
 func (data *Data) Retrieve(pool *redis.Pool) error {
 	db := pool.Get()
 	defer db.Close()
-	url, err := redis.String(db.Do("GET", data.token))
+	url, err := redis.String(db.Do("GET", data.Token))
 	if err == nil {
 		data.OrgUrl = url
 	}
@@ -106,13 +106,13 @@ func (data *Data) Retrieve(pool *redis.Pool) error {
 
 func Redirect(params martini.Params, r render.Render, pool *redis.Pool) {
 	data := &Data{}
-	data.token = params["token"]
+	data.Token = params["Token"]
 	err := data.Retrieve(pool)
 	if err != nil {
-		syslog.Critf("Error: Token not found %s", params["token"])
+		syslog.Critf("Error: Token not found %s", params["Token"])
 		r.HTML(404, "404", nil)
 	} else {
-		syslog.Critf("Redirect from %s to %s", Get("lilliput.domain", "").(string)+params["token"], data.OrgUrl)
+		syslog.Critf("Redirect from %s to %s", Get("lilliput.domain", "").(string)+params["Token"], data.OrgUrl)
 		r.Redirect(data.OrgUrl, 301)
 	}
 }
@@ -128,7 +128,7 @@ func Start() {
 		Charset:    "UTF-8",
 	}))
 
-	m.Get("/:token", Redirect)
+	m.Get("/:Token", Redirect)
 	m.Get("/", func(r render.Render) {
 		r.HTML(200, "index", nil)
 	})

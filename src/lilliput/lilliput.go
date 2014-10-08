@@ -77,9 +77,9 @@ func (data *Data) Save(pool *redis.Pool) {
 	}
 
 	if data.Token == "" {
-		syslog.Critf("Error: failed to generate Token")
+		syslog.Critf("Error: failed to generate token")
 		data.Err = true
-		data.Message = "Faild to generate Token please try again."
+		data.Message = "Faild to generate token please try again."
 	} else {
 		_, err := db.Do("SET", data.Token, data.OrgUrl)
 		if err != nil {
@@ -106,13 +106,13 @@ func (data *Data) Retrieve(pool *redis.Pool) error {
 
 func Redirect(params martini.Params, r render.Render, pool *redis.Pool) {
 	data := &Data{}
-	data.Token = params["Token"]
+	data.Token = params["token"]
 	err := data.Retrieve(pool)
 	if err != nil {
-		syslog.Critf("Error: Token not found %s", params["Token"])
+		syslog.Critf("Error: Token not found %s", params["token"])
 		r.HTML(404, "404", nil)
 	} else {
-		syslog.Critf("Redirect from %s to %s", Get("lilliput.domain", "").(string)+params["Token"], data.OrgUrl)
+		syslog.Critf("Redirect from %s to %s", Get("lilliput.domain", "").(string)+params["token"], data.OrgUrl)
 		r.Redirect(data.OrgUrl, 301)
 	}
 }
@@ -128,7 +128,7 @@ func Start() {
 		Charset:    "UTF-8",
 	}))
 
-	m.Get("/:Token", Redirect)
+	m.Get("/:token", Redirect)
 	m.Get("/", func(r render.Render) {
 		r.HTML(200, "index", nil)
 	})

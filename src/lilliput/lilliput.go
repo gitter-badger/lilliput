@@ -8,21 +8,29 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/go-martini/martini"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
 )
 
 const (
-	alphanum = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	ALPHANUM                      = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	EMAIL_REGEX                   = `(http|https):\/\/(\w+:{0,1}\w*@)?(\S+)(:[0-9]+)?(\/|\/([\w#!:.?+=&%@!\-\/]))?`
+	SUCCESS                       = 0
+	ERROR_NO_URL                  = 1
+	ERROR_INVALID_DOMAIN          = 2
+	ERROR_INVALID_URL             = 3
+	ERROR_FAILED_TO_SAVE          = 4
+	ERROR_TOKEN_GENERATION_FAILED = 5
 )
 
 type Data struct {
-	Url     string `json:"url"`
-	Err     bool   `json:"err"`
+	Tiny    string `json:"url"`
+	Err     int    `json:"error_code"`
 	Message string `json:"message"`
 	Token   string `json:"_"`
-	OrgUrl  string `json:"_"`
+	Url     string `json:"_"`
 }
 
 func NewPool(server string) *redis.Pool {
@@ -45,29 +53,48 @@ func NewPool(server string) *redis.Pool {
 }
 
 func TinyUrl(req *http.Request, r render.Render, pool *redis.Pool) {
-	data := &Data{OrgUrl: strings.TrimSpace(req.FormValue("url"))}
-	expression := regexp.MustCompile(`(http|https):\/\/(\w+:{0,1}\w*@)?(\S+)(:[0-9]+)?(\/|\/([\w#!:.?+=&%@!\-\/]))?`)
-	if expression.MatchString(data.OrgUrl) {
-		data.Save(pool)
-	} else {
-		syslog.Critf("Invalid url %s", data.OrgUrl)
-		data.Err = true
-		data.Message = "Provide valid url, url must be with prepend with http:// or https://"
+	resource := strings.TrimSpace(req.FormValue("url"))
+	data := &Data{}
+
+	if len(resource) == 0 {
+		data.Err = ERROR_NO_URL
+		data.Message = "url must be provided in request."
+		r.JSON(200, data)
+		return
 	}
 
-	r.JSON(200, data)
-	return
-}
+	u, _ := url.Parse(resource)
+	domains := Get("lilliput.alloweddomain", nil).([]interface{})
+	flag := true
+	for _, d := range domains {
+		if d.(string) == u.Host {
+			flag = false
+		}
+	}
 
-func (data *Data) Save(pool *redis.Pool) {
+	if flag {
+		data.Err = ERROR_INVALID_DOMAIN
+		data.Message = "Invalid domain in url"
+		r.JSON(200, data)
+		return
+	}
+
+	expression := regexp.MustCompile(EMAIL_REGEX)
+	if expression.MatchString(resource) == false {
+		data.Err = ERROR_INVALID_URL
+		data.Message = "Invalid url"
+		r.JSON(200, data)
+		return
+	}
+
+	bytes := make([]byte, 7)
 	db := pool.Get()
 	defer db.Close()
-	bytes := make([]byte, 7)
 
 	for i := 0; i < 5; i++ {
 		rand.Read(bytes)
 		for i, b := range bytes {
-			bytes[i] = alphanum[b%byte(len(alphanum))]
+			bytes[i] = ALPHANUM[b%byte(len(ALPHANUM))]
 		}
 		id := string(bytes)
 		if exists, _ := redis.Bool(db.Do("EXISTS", id)); !exists {
@@ -78,20 +105,31 @@ func (data *Data) Save(pool *redis.Pool) {
 
 	if data.Token == "" {
 		syslog.Critf("Error: failed to generate token")
-		data.Err = true
+		data.Err = ERROR_TOKEN_GENERATION_FAILED
 		data.Message = "Faild to generate token please try again."
-	} else {
-		_, err := db.Do("SET", data.Token, data.OrgUrl)
-		if err != nil {
-			syslog.Critf("Error: %s", err)
-			data.Err = true
-			data.Message = "Faild to generate please try again."
-		} else {
-			data.Err = false
-			data.Url = Get("lilliput.domain", "").(string) + data.Token
-		}
-		syslog.Critf("Tiny url from %s to %s", data.OrgUrl, data.Url)
+		r.JSON(200, data)
+		return
 	}
+
+	data.Save(pool)
+	r.JSON(200, data)
+	return
+}
+
+func (data *Data) Save(pool *redis.Pool) {
+	db := pool.Get()
+	defer db.Close()
+
+	_, err := db.Do("SET", data.Token, data.Url)
+	if err != nil {
+		syslog.Critf("Error: %s", err)
+		data.Err = ERROR_FAILED_TO_SAVE
+		data.Message = "Faild to generate please try again."
+	} else {
+		data.Err = SUCCESS
+		data.Url = Get("lilliput.domain", "").(string) + data.Token
+	}
+	syslog.Critf("Tiny url from %s to %s", data.Url, data.Tiny)
 }
 
 func (data *Data) Retrieve(pool *redis.Pool) error {
@@ -99,7 +137,7 @@ func (data *Data) Retrieve(pool *redis.Pool) error {
 	defer db.Close()
 	url, err := redis.String(db.Do("GET", data.Token))
 	if err == nil {
-		data.OrgUrl = url
+		data.Url = url
 	}
 	return err
 }
@@ -112,8 +150,8 @@ func Redirect(params martini.Params, r render.Render, pool *redis.Pool) {
 		syslog.Critf("Error: Token not found %s", params["token"])
 		r.HTML(404, "404", nil)
 	} else {
-		syslog.Critf("Redirect from %s to %s", Get("lilliput.domain", "").(string)+params["token"], data.OrgUrl)
-		r.Redirect(data.OrgUrl, 301)
+		syslog.Critf("Redirect from %s to %s", Get("lilliput.domain", "").(string)+params["token"], data.Url)
+		r.Redirect(data.Url, 301)
 	}
 }
 

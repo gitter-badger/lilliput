@@ -128,8 +128,8 @@ func (data *Data) Save(pool *redis.Pool) {
 	} else {
 		data.Err = SUCCESS
 		data.Url = Get("lilliput.domain", "").(string) + data.Token
+		syslog.Critf("Tiny url from %s to %s", data.Url, data.Tiny)
 	}
-	syslog.Critf("Tiny url from %s to %s", data.Url, data.Tiny)
 }
 
 func (data *Data) Retrieve(pool *redis.Pool) error {

@@ -2,11 +2,12 @@ package liliput
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"github.com/blackjack/syslog"
-	"github.com/codegangsta/martini-contrib/render"
 	"github.com/garyburd/redigo/redis"
 	"github.com/go-martini/martini"
+	"github.com/martini-contrib/render"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -23,9 +24,10 @@ const (
 	ERROR_INVALID_URL             = 3
 	ERROR_FAILED_TO_SAVE          = 4
 	ERROR_TOKEN_GENERATION_FAILED = 5
+	ERROR_UNAUTHORIZED            = 6
 )
 
-type Data struct {
+type Entity struct {
 	Tiny    string `json:"url"`
 	Err     int    `json:"error_code"`
 	Message string `json:"message"`
@@ -35,7 +37,7 @@ type Data struct {
 
 func NewPool(server string) *redis.Pool {
 	return &redis.Pool{
-		MaxIdle:     3,
+		MaxIdle:     10,
 		IdleTimeout: 240 * time.Second,
 		Dial: func() (redis.Conn, error) {
 			c, err := redis.Dial("tcp", server)
@@ -53,14 +55,24 @@ func NewPool(server string) *redis.Pool {
 }
 
 func TinyUrl(req *http.Request, r render.Render, pool *redis.Pool) {
-	resource := strings.TrimSpace(req.FormValue("url"))
-	data := &Data{}
-
-	if len(resource) == 0 {
-		data.Err = ERROR_NO_URL
-		data.Message = "url must be provided in request."
-		r.JSON(200, data)
+	entity := &Entity{}
+	e, err := entity.Save(req.FormValue("url"), pool)
+	if err != nil {
+		r.JSON(400, e)
 		return
+	}
+
+	r.JSON(200, e)
+	return
+}
+
+func (entity *Entity) Save(iaddress string, pool *redis.Pool) (*Entity, error) {
+	resource := strings.TrimSpace(iaddress)
+	if len(resource) == 0 {
+		entity.Err = ERROR_NO_URL
+		entity.Message = "url must be provided in request."
+		err := errors.New(entity.Message)
+		return entity, err
 	}
 
 	u, _ := url.Parse(resource)
@@ -73,18 +85,18 @@ func TinyUrl(req *http.Request, r render.Render, pool *redis.Pool) {
 	}
 
 	if flag {
-		data.Err = ERROR_INVALID_DOMAIN
-		data.Message = "Invalid domain in url"
-		r.JSON(200, data)
-		return
+		entity.Err = ERROR_INVALID_DOMAIN
+		entity.Message = "Invalid domain in url"
+		err := errors.New(entity.Message)
+		return entity, err
 	}
 
 	expression := regexp.MustCompile(EMAIL_REGEX)
 	if expression.MatchString(resource) == false {
-		data.Err = ERROR_INVALID_URL
-		data.Message = "Invalid url"
-		r.JSON(200, data)
-		return
+		entity.Err = ERROR_INVALID_URL
+		entity.Message = "Invalid url"
+		err := errors.New(entity.Message)
+		return entity, err
 	}
 
 	bytes := make([]byte, 7)
@@ -98,60 +110,54 @@ func TinyUrl(req *http.Request, r render.Render, pool *redis.Pool) {
 		}
 		id := string(bytes)
 		if exists, _ := redis.Bool(db.Do("EXISTS", id)); !exists {
-			data.Token = id
+			entity.Token = id
 			break
 		}
 	}
 
-	if data.Token == "" {
+	if entity.Token == "" {
 		syslog.Critf("Error: failed to generate token")
-		data.Err = ERROR_TOKEN_GENERATION_FAILED
-		data.Message = "Faild to generate token please try again."
-		r.JSON(200, data)
-		return
+		entity.Err = ERROR_TOKEN_GENERATION_FAILED
+		entity.Message = "Faild to generate token please try again."
+		err := errors.New(entity.Message)
+		return entity, err
 	}
 
-	data.Save(pool)
-	r.JSON(200, data)
-	return
-}
-
-func (data *Data) Save(pool *redis.Pool) {
-	db := pool.Get()
-	defer db.Close()
-
-	_, err := db.Do("SET", data.Token, data.Url)
-	if err != nil {
+	reply, err := db.Do("SET", entity.Token, entity.Url)
+	if err == nil && reply != "OK" {
 		syslog.Critf("Error: %s", err)
-		data.Err = ERROR_FAILED_TO_SAVE
-		data.Message = "Faild to generate please try again."
-	} else {
-		data.Err = SUCCESS
-		data.Url = Get("lilliput.domain", "").(string) + data.Token
-		syslog.Critf("Tiny url from %s to %s", data.Url, data.Tiny)
+		entity.Err = ERROR_FAILED_TO_SAVE
+		entity.Message = "Invalid Redis response"
+		err := errors.New(entity.Message)
+		return entity, err
 	}
+
+	entity.Err = SUCCESS
+	entity.Tiny = Get("lilliput.domain", "").(string) + entity.Token
+	syslog.Critf("Tiny url from %s to %s", entity.Url, entity.Tiny)
+	return entity, nil
 }
 
-func (data *Data) Retrieve(pool *redis.Pool) error {
+func (entity *Entity) Retrieve(pool *redis.Pool) error {
 	db := pool.Get()
 	defer db.Close()
-	url, err := redis.String(db.Do("GET", data.Token))
+	url, err := redis.String(db.Do("GET", entity.Token))
 	if err == nil {
-		data.Url = url
+		entity.Url = url
 	}
 	return err
 }
 
 func Redirect(params martini.Params, r render.Render, pool *redis.Pool) {
-	data := &Data{}
-	data.Token = params["token"]
-	err := data.Retrieve(pool)
+	entity := &Entity{}
+	entity.Token = params["token"]
+	err := entity.Retrieve(pool)
 	if err != nil {
 		syslog.Critf("Error: Token not found %s", params["token"])
 		r.HTML(404, "404", nil)
 	} else {
-		syslog.Critf("Redirect from %s to %s", Get("lilliput.domain", "").(string)+params["token"], data.Url)
-		r.Redirect(data.Url, 301)
+		syslog.Critf("Redirect from %s to %s", Get("lilliput.domain", "").(string)+params["token"], entity.Url)
+		r.Redirect(entity.Url, 301)
 	}
 }
 

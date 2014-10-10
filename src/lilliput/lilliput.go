@@ -57,6 +57,7 @@ type Entity struct {
 	Url     string `json:"_"`
 }
 
+// Creating redis server pool
 func NewPool(server string) *redis.Pool {
 	return &redis.Pool{
 		MaxIdle:     10,
@@ -76,6 +77,7 @@ func NewPool(server string) *redis.Pool {
 	}
 }
 
+// called on post request to create tiny url
 func TinyUrl(req *http.Request, r render.Render, pool *redis.Pool) {
 	entity := &Entity{}
 	e, err := entity.Save(req.FormValue("url"), pool)
@@ -170,6 +172,7 @@ func (entity *Entity) Retrieve(pool *redis.Pool) error {
 	return err
 }
 
+// redirect go goes from here
 func Redirect(params martini.Params, r render.Render, pool *redis.Pool) {
 	entity := &Entity{}
 	entity.Token = params["token"]
@@ -188,6 +191,7 @@ func Start() {
 	syslog.Openlog("lilliput", syslog.LOG_PID, syslog.LOG_USER)
 
 	m := martini.Classic()
+	// render home page
 	m.Use(render.Renderer(render.Options{
 		Directory:  "static",
 		Extensions: []string{".html"},

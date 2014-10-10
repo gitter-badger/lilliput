@@ -48,7 +48,7 @@ Alternatvely we can use<br>
 			// port number on which lilliput will be running
 			port = 8989 
 			// domain name which will be prepend in tinyurl
-			domain = "http://127.0.0.1:8989/"
+			domain = "http://jbo.ng/"
 			[redis]
 			server = "127.0.0.1"
 			port = "6379"
@@ -59,10 +59,14 @@ Alternatvely we can use<br>
 # Sample Usage
 <pre>
 	<code>
-		shell> curl --data "url=http://google.com" http://127.0.0.1:8989
+		shell> curl --data "url=http://google.com" http://jbo.ng/
 	</code>
 </pre>
 ###### Output
 ```json
-	{"url":"http://127.0.0.1:8989/4P","err":false,"message":"","OrgUrl":"http://google.com"}
+	{
+	  "url": "http://jbo.ng/vmePlru",
+	  "err": false,
+	  "message": ""
+	}
 ```

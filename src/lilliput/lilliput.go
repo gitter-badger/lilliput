@@ -122,7 +122,7 @@ func (entity *Entity) Save(iaddress string, pool *redis.Pool) (*Entity, error) {
 		err := errors.New(entity.Message)
 		return entity, err
 	}
-
+	entity.Url = iaddress
 	bytes := make([]byte, 7)
 	db := pool.Get()
 	defer db.Close()

@@ -29,6 +29,7 @@ import (
 	"github.com/blackjack/syslog"
 	"github.com/garyburd/redigo/redis"
 	"github.com/go-martini/martini"
+	"github.com/martini-contrib/gorelic"
 	"github.com/martini-contrib/render"
 	"net/http"
 	"net/url"
@@ -197,6 +198,9 @@ func Start() {
 		Extensions: []string{".html"},
 		Charset:    "UTF-8",
 	}))
+
+	gorelic.InitNewrelicAgent(Get("newrelic.license", "").(string), Get("lilliput.domain", "").(string), true)
+	m.Use(gorelic.Handler)
 
 	m.Get("/:token", Redirect)
 	m.Get("/", func(r render.Render) {

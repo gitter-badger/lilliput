@@ -20,17 +20,17 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package liliput
+package model
 
 import (
 	"crypto/rand"
 	"errors"
 	"fmt"
 	"github.com/blackjack/syslog"
-	"github.com/garyburd/redigo/redis"
 	"github.com/go-martini/martini"
 	"github.com/martini-contrib/gorelic"
 	"github.com/martini-contrib/render"
+	"gopkg.in/redis.v3"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -59,27 +59,15 @@ type Entity struct {
 }
 
 // Creating redis server pool
-func NewPool(server string) *redis.Pool {
-	return &redis.Pool{
-		MaxIdle:     10,
-		IdleTimeout: 240 * time.Second,
-		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial("tcp", server)
-			if err != nil {
-				return nil, err
-			}
-			c.Do("SELECT", Get("redis.dbname", "").(int64))
-			return c, err
-		},
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			return err
-		},
-	}
+func NewPool(server string) *redis.ClusterClient {
+	client := redis.NewClusterClient(&redis.ClusterOptions{
+		Addrs: []string{"cache-server1:7001", "cache-server2:7002", "cache-server3:7003", "cache-server4:7004"},
+	})
+	return client
 }
 
 // called on post request to create tiny url
-func TinyUrl(req *http.Request, r render.Render, pool *redis.Pool) {
+func TinyUrl(req *http.Request, r render.Render, pool *redis.ClusterClient) {
 	entity := &Entity{}
 	e, err := entity.Save(req.FormValue("url"), pool)
 	if err != nil {
@@ -91,7 +79,7 @@ func TinyUrl(req *http.Request, r render.Render, pool *redis.Pool) {
 	return
 }
 
-func (entity *Entity) Save(iaddress string, pool *redis.Pool) (*Entity, error) {
+func (entity *Entity) Save(iaddress string, pool *redis.ClusterClient) (*Entity, error) {
 	resource := strings.TrimSpace(iaddress)
 	if len(resource) == 0 {
 		entity.Err = ERROR_NO_URL
@@ -125,16 +113,14 @@ func (entity *Entity) Save(iaddress string, pool *redis.Pool) (*Entity, error) {
 	}
 	entity.Url = iaddress
 	bytes := make([]byte, 7)
-	db := pool.Get()
-	defer db.Close()
-
 	for i := 0; i < 5; i++ {
 		rand.Read(bytes)
 		for i, b := range bytes {
 			bytes[i] = ALPHANUM[b%byte(len(ALPHANUM))]
 		}
 		id := string(bytes)
-		if exists, _ := redis.Bool(db.Do("EXISTS", id)); !exists {
+
+		if exists := pool.Exists(id).Val(); !exists {
 			entity.Token = id
 			break
 		}
@@ -148,7 +134,10 @@ func (entity *Entity) Save(iaddress string, pool *redis.Pool) (*Entity, error) {
 		return entity, err
 	}
 
-	reply, err := db.Do("SET", entity.Token, entity.Url)
+	reply, err := pool.Set(entity.Token, entity.Url, time.Duration(0)).Result()
+//	fmt.Println(reply)
+	fmt.Println(err.Error())
+	
 	if err == nil && reply != "OK" {
 		syslog.Critf("Error: %s", err)
 		entity.Err = ERROR_FAILED_TO_SAVE
@@ -163,10 +152,8 @@ func (entity *Entity) Save(iaddress string, pool *redis.Pool) (*Entity, error) {
 	return entity, nil
 }
 
-func (entity *Entity) Retrieve(pool *redis.Pool) error {
-	db := pool.Get()
-	defer db.Close()
-	url, err := redis.String(db.Do("GET", entity.Token))
+func (entity *Entity) Retrieve(pool *redis.ClusterClient) error {
+	url, err := pool.Get(entity.Token).Result()
 	if err == nil {
 		entity.Url = url
 	}
@@ -174,7 +161,7 @@ func (entity *Entity) Retrieve(pool *redis.Pool) error {
 }
 
 // redirect go goes from here
-func Redirect(params martini.Params, r render.Render, pool *redis.Pool) {
+func Redirect(params martini.Params, r render.Render, pool *redis.ClusterClient) {
 	entity := &Entity{}
 	entity.Token = params["token"]
 	err := entity.Retrieve(pool)

@@ -23,9 +23,9 @@
 package main
 
 import (
-	"lilliput"
+	"github.com/jabong/lilliput/model"
 )
 
 func main() {
-	liliput.Start()
+	model.Start()
 }

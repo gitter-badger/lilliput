@@ -1,0 +1,54 @@
+{
+	"ImportPath": "github.com/jabong/lilliput",
+	"GoVersion": "go1.5.2",
+	"Deps": [
+		{
+			"ImportPath": "github.com/blackjack/syslog",
+			"Rev": "4ea3f32c1eb1115ad9e010eeff314fffc5fc8638"
+		},
+		{
+			"ImportPath": "github.com/codegangsta/inject",
+			"Comment": "v1.0-rc1-4-g4b81725",
+			"Rev": "4b8172520a03fa190f427bbd284db01b459bfce7"
+		},
+		{
+			"ImportPath": "github.com/garyburd/redigo/redis",
+			"Rev": "779af66db5668074a96f522d9025cb0a5ef50d89"
+		},
+		{
+			"ImportPath": "github.com/go-martini/martini",
+			"Comment": "v1.0-81-gccdc6a3",
+			"Rev": "ccdc6a3a7fdd6e4de5cd3811b42293d9ee23c780"
+		},
+		{
+			"ImportPath": "github.com/martini-contrib/gorelic",
+			"Rev": "f8b0843aa3ab66d8734aa7d9acf399bdc197c65d"
+		},
+		{
+			"ImportPath": "github.com/martini-contrib/render",
+			"Rev": "ec18f8345a1181146728238980606fb1d6f40e8c"
+		},
+		{
+			"ImportPath": "github.com/oxtoacart/bpool",
+			"Rev": "4e1c5567d7c2dd59fa4c7c83d34c2f3528b025d6"
+		},
+		{
+			"ImportPath": "github.com/pelletier/go-toml",
+			"Comment": "v0.2.1-9-gb814e1a",
+			"Rev": "b814e1a94f2149cf80c009c18a82e966283b43c0"
+		},
+		{
+			"ImportPath": "github.com/yvasiyarov/go-metrics",
+			"Rev": "c25f46c4b94079672242ec48a545e7ca9ebe3aec"
+		},
+		{
+			"ImportPath": "github.com/yvasiyarov/gorelic",
+			"Comment": "v0.0.6-24-g1c0ed4e",
+			"Rev": "1c0ed4e38e62548df0051140795e569d35cf2ded"
+		},
+		{
+			"ImportPath": "github.com/yvasiyarov/newrelic_platform_go",
+			"Rev": "cef0ebd22fb48453114ba645d0fb80fea6e670de"
+		}
+	]
+}

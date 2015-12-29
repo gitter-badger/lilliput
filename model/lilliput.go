@@ -60,9 +60,14 @@ type Entity struct {
 
 // Creating redis server pool
 func NewPool(server string) *redis.ClusterClient {
+	redisConfig := Get("lilliput.cluster", nil).([]interface{})
+	var cluster []string
+	for _, k := range redisConfig {
+		t, _ := k.(string)
+		cluster = append(cluster, t)
+	}
 	client := redis.NewClusterClient(&redis.ClusterOptions{
-		Addrs: []string{"cache-server1:7001", "cache-server2:7002", "cache-server3:7003", "cache-server4:7004"},
-	})
+		Addrs: cluster})
 	return client
 }
 
@@ -134,11 +139,9 @@ func (entity *Entity) Save(iaddress string, pool *redis.ClusterClient) (*Entity,
 		return entity, err
 	}
 
-	reply, err := pool.Set(entity.Token, entity.Url, time.Duration(0)).Result()
-//	fmt.Println(reply)
-	fmt.Println(err.Error())
-	
-	if err == nil && reply != "OK" {
+	_, err := pool.Set(entity.Token, entity.Url, time.Duration(0)).Result()
+
+	if err != nil {
 		syslog.Critf("Error: %s", err)
 		entity.Err = ERROR_FAILED_TO_SAVE
 		entity.Message = "Invalid Redis response"
@@ -177,7 +180,7 @@ func Redirect(params martini.Params, r render.Render, pool *redis.ClusterClient)
 func Start() {
 	fmt.Println("Starting Liliput..")
 	syslog.Openlog("lilliput", syslog.LOG_PID, syslog.LOG_USER)
-
+	martini.Env = "production"
 	m := martini.Classic()
 	// render home page
 	m.Use(render.Renderer(render.Options{
@@ -185,8 +188,8 @@ func Start() {
 		Extensions: []string{".html"},
 		Charset:    "UTF-8",
 	}))
-
-	gorelic.InitNewrelicAgent(Get("newrelic.license", "").(string), Get("lilliput.domain", "").(string), true)
+	
+	gorelic.InitNewrelicAgent(Get("newrelic.license", "").(string), Get("lilliput.domain", "").(string), false)
 	m.Use(gorelic.Handler)
 
 	m.Get("/:token", Redirect)

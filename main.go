@@ -24,8 +24,11 @@ package main
 
 import (
 	"github.com/jabong/lilliput/model"
+	"runtime"
 )
 
 func main() {
+	// set number of cpu used by application
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	model.Start()
 }

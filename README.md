@@ -72,7 +72,6 @@ Alternatvely we can use<br>
 		shell> curl --data "url=http://google.com" http://jbo.ng/
 	</code>
 </pre>
-###### Output
 ```json
 	{
 	  "url": "http://jbo.ng/vmePlru",

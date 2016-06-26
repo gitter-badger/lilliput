@@ -1,6 +1,8 @@
 lilliput
 ========
 
+[![Join the chat at https://gitter.im/debraj-manna/lilliput](https://badges.gitter.im/debraj-manna/lilliput.svg)](https://gitter.im/debraj-manna/lilliput?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 Jabong's Url Shortener
 
 # Status
